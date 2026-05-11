@@ -9,6 +9,11 @@ module pynq_dds_bridge_test_top #(
     input  wire        uart_rx,
     output wire        uart_tx,
 
+    // Debug LEDs on PYNQDDS board.
+    // led0: heartbeat
+    // led1: toggle on each completed 128-byte SPI transaction
+    // led2: pulse on SPI frame parse error (header/type/length/checksum)
+    // led3: pulse on successfully parsed new text seq from PYNQADC
     output wire        led0,
     output wire        led1,
     output wire        led2,
@@ -35,12 +40,49 @@ module pynq_dds_bridge_test_top #(
         end
     end
 
+    // ============================================================
+    // Debug LEDs
+    // ============================================================
+    localparam [23:0] LED_BLINK_TICKS = 24'd12_500_000;
+
     reg [26:0] heartbeat_cnt = 27'd0;
+    reg        spi_done_toggle = 1'b0;
+    reg        spi_done_d1 = 1'b0;
+    reg [23:0] frame_err_blink_cnt = 24'd0;
+    reg [23:0] new_text_blink_cnt = 24'd0;
+
+    wire frame_err = spi_done_d1 && !adc_frame_valid;
+
     always @(posedge clk_125m) begin
-        if (por_rst) heartbeat_cnt <= 27'd0;
-        else heartbeat_cnt <= heartbeat_cnt + 1'b1;
+        if (por_rst) begin
+            heartbeat_cnt <= 27'd0;
+            spi_done_toggle <= 1'b0;
+            spi_done_d1 <= 1'b0;
+            frame_err_blink_cnt <= 24'd0;
+            new_text_blink_cnt <= 24'd0;
+        end else begin
+            heartbeat_cnt <= heartbeat_cnt + 27'd1;
+            spi_done_d1 <= spi_done;
+
+            if (spi_done)
+                spi_done_toggle <= ~spi_done_toggle;
+
+            if (frame_err)
+                frame_err_blink_cnt <= LED_BLINK_TICKS;
+            else if (frame_err_blink_cnt != 24'd0)
+                frame_err_blink_cnt <= frame_err_blink_cnt - 24'd1;
+
+            if (adc_frame_valid && adc_seq != 32'd0 && adc_seq != last_adc_seq)
+                new_text_blink_cnt <= LED_BLINK_TICKS;
+            else if (new_text_blink_cnt != 24'd0)
+                new_text_blink_cnt <= new_text_blink_cnt - 24'd1;
+        end
     end
+
     assign led0 = heartbeat_cnt[26];
+    assign led1 = spi_done_toggle;
+    assign led2 = (frame_err_blink_cnt != 24'd0);
+    assign led3 = (new_text_blink_cnt != 24'd0);
 
     // ============================================================
     // UART line input from DDS-side PC. Type text + Enter, then return to ADC.
@@ -115,8 +157,6 @@ module pynq_dds_bridge_test_top #(
         .active(spi_active)
     );
 
-    assign led3 = spi_active;
-
     wire adc_frame_valid;
     wire [31:0] adc_seq;
     wire [31:0] adc_text_len;
@@ -176,16 +216,17 @@ module pynq_dds_bridge_test_top #(
         .done(uart_tx_done)
     );
 
-    assign led1 = uart_rx_valid;
-    assign led2 = uart_tx_busy;
-
     localparam [1:0] PRINT_READY = 2'd0;
     localparam [1:0] PRINT_MSG   = 2'd1;
+    localparam [1:0] PRINT_ERR   = 2'd2;
 
     reg print_active = 1'b1;
     reg [1:0] print_mode = PRINT_READY;
     reg [7:0] print_index = 8'd0;
     reg print_start_msg = 1'b0;
+
+    reg err_pending = 1'b0;
+    reg [26:0] err_rate_cnt = 27'd0;
 
     function [7:0] ready_char;
         input [7:0] idx;
@@ -214,6 +255,19 @@ module pynq_dds_bridge_test_top #(
         end
     endfunction
 
+    function [7:0] err_char;
+        input [7:0] idx;
+        begin
+            case (idx)
+            8'd0:  err_char = "S"; 8'd1:  err_char = "P"; 8'd2:  err_char = "I"; 8'd3:  err_char = "_";
+            8'd4:  err_char = "F"; 8'd5:  err_char = "R"; 8'd6:  err_char = "A"; 8'd7:  err_char = "M";
+            8'd8:  err_char = "E"; 8'd9:  err_char = "_"; 8'd10: err_char = "E"; 8'd11: err_char = "R";
+            8'd12: err_char = "R"; 8'd13: err_char = 8'h0D; 8'd14: err_char = 8'h0A;
+            default: err_char = 8'h00;
+            endcase
+        end
+    endfunction
+
     always @(posedge clk_125m) begin
         if (por_rst) begin
             uart_tx_start <= 1'b0;
@@ -222,15 +276,32 @@ module pynq_dds_bridge_test_top #(
             print_mode <= PRINT_READY;
             print_index <= 8'd0;
             print_start_msg <= 1'b0;
+            err_pending <= 1'b0;
+            err_rate_cnt <= 27'd0;
         end else begin
             uart_tx_start <= 1'b0;
             print_start_msg <= 1'b0;
 
-            if (!print_active && print_pending) begin
-                print_active <= 1'b1;
-                print_mode <= PRINT_MSG;
-                print_index <= 8'd0;
-                print_start_msg <= 1'b1;
+            // Rate-limited error capture
+            if (err_rate_cnt != 27'd0) begin
+                err_rate_cnt <= err_rate_cnt - 27'd1;
+            end else if (frame_err) begin
+                err_pending <= 1'b1;
+                err_rate_cnt <= 27'd125_000_000;
+            end
+
+            if (!print_active) begin
+                if (err_pending) begin
+                    print_active <= 1'b1;
+                    print_mode <= PRINT_ERR;
+                    print_index <= 8'd0;
+                    err_pending <= 1'b0;
+                end else if (print_pending) begin
+                    print_active <= 1'b1;
+                    print_mode <= PRINT_MSG;
+                    print_index <= 8'd0;
+                    print_start_msg <= 1'b1;
+                end
             end else if (print_active && !uart_tx_busy && !uart_tx_start) begin
                 if (print_mode == PRINT_READY) begin
                     if (print_index < 8'd23) begin
@@ -240,7 +311,7 @@ module pynq_dds_bridge_test_top #(
                     end else begin
                         print_active <= 1'b0;
                     end
-                end else begin
+                end else if (print_mode == PRINT_MSG) begin
                     if (print_index < 8'd13) begin
                         uart_tx_data <= prefix_char(print_index);
                         uart_tx_start <= 1'b1;
@@ -255,6 +326,14 @@ module pynq_dds_bridge_test_top #(
                         print_index <= print_index + 8'd1;
                     end else if (print_index == (8'd14 + print_text_len[7:0])) begin
                         uart_tx_data <= 8'h0A;
+                        uart_tx_start <= 1'b1;
+                        print_index <= print_index + 8'd1;
+                    end else begin
+                        print_active <= 1'b0;
+                    end
+                end else begin // PRINT_ERR
+                    if (print_index < 8'd15) begin
+                        uart_tx_data <= err_char(print_index);
                         uart_tx_start <= 1'b1;
                         print_index <= print_index + 8'd1;
                     end else begin

@@ -74,8 +74,8 @@ module spi_slave_128b (
                 end
 
                 if (sclk_fall) begin
-                    if (bit_count < 11'd1023) begin
-                        miso <= tx_shift[next_byte*8 + next_bit];
+                    if (bit_count < 11'd1024) begin
+                        miso <= tx_shift[cur_byte*8 + cur_bit];
                     end else begin
                         miso <= 1'b0;
                     end
