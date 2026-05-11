@@ -1,4 +1,4 @@
-## PYNQDDS bridge test: UART + SPI slave from PYNQADC + verified AD9767 DDS output
+## PYNQDDS system: SPI-B Slave + DDS + AD9767 DAC output
 
 set_property PACKAGE_PIN H16 [get_ports clk_125m]
 set_property IOSTANDARD LVCMOS33 [get_ports clk_125m]
@@ -7,18 +7,6 @@ create_clock -period 8.000 -name clk_125m [get_ports clk_125m]
 ## Reset button BTN0
 set_property PACKAGE_PIN D19 [get_ports rst_btn]
 set_property IOSTANDARD LVCMOS33 [get_ports rst_btn]
-
-## UART via PmodB P1/P2, same as previously verified DDS test
-if {[llength [get_ports -quiet uart_tx]]} {
-    set_property PACKAGE_PIN W14 [get_ports uart_tx]
-    set_property IOSTANDARD LVCMOS33 [get_ports uart_tx]
-}
-
-if {[llength [get_ports -quiet uart_rx]]} {
-    set_property PACKAGE_PIN Y14 [get_ports uart_rx]
-    set_property IOSTANDARD LVCMOS33 [get_ports uart_rx]
-    set_property PULLUP true [get_ports uart_rx]
-}
 
 ## LEDs
 set_property PACKAGE_PIN R14 [get_ports led0]
@@ -33,8 +21,7 @@ set_property IOSTANDARD LVCMOS33 [get_ports led2]
 set_property PACKAGE_PIN M14 [get_ports led3]
 set_property IOSTANDARD LVCMOS33 [get_ports led3]
 
-## SPI slave from PYNQADC using PmodB P7-P10
-## PYNQDDS side directions: MOSI/SCLK/CS are inputs, MISO is output
+## SPI-B Slave from PYNQADC (PmodB P7-P10)
 set_property PACKAGE_PIN V16 [get_ports adc_spi_mosi]
 set_property IOSTANDARD LVCMOS33 [get_ports adc_spi_mosi]
 
@@ -48,7 +35,7 @@ set_property PACKAGE_PIN W13 [get_ports adc_spi_cs_n]
 set_property IOSTANDARD LVCMOS33 [get_ports adc_spi_cs_n]
 set_property PULLUP true [get_ports adc_spi_cs_n]
 
-## Verified AD9767 DAC P1 / CH1 mapping from the current DDS project
+## AD9767 DAC P1/CH1 (verified)
 set_property PACKAGE_PIN W18 [get_ports {dac_data[0]}]
 set_property IOSTANDARD LVCMOS33 [get_ports {dac_data[0]}]
 

@@ -21,6 +21,7 @@ module dds_core #(
     input  wire        sample_tick,
     input  wire [2:0]  wave_sel,
     input  wire        t_group,          // 0=low-8, 1=high-6
+    input  wire [31:0] fword,
     output reg  [13:0] dac_code
 );
 
@@ -33,7 +34,7 @@ module dds_core #(
     reg        sweep_dir;
 
     wire sweep_mode = (wave_sel == 3'b100);
-    wire [31:0] active_fword = sweep_mode ? sweep_fword : FWORD;
+    wire [31:0] active_fword = sweep_mode ? sweep_fword : fword;
 
     always @(posedge clk) begin
         if (rst) begin

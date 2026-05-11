@@ -8,7 +8,8 @@ module spi_slave_128b (
     input  wire        cs_n,
     output reg  [1023:0] rx_frame,
     output reg         done,
-    output reg         active
+    output reg         active,
+    output wire        cs_fall
 );
 
     reg sclk_d1, sclk_d2;
@@ -17,8 +18,8 @@ module spi_slave_128b (
 
     wire sclk_rise = (sclk_d2 == 1'b0) && (sclk_d1 == 1'b1);
     wire sclk_fall = (sclk_d2 == 1'b1) && (sclk_d1 == 1'b0);
-    wire cs_fall   = (cs_d2 == 1'b1) && (cs_d1 == 1'b0);
     wire cs_rise   = (cs_d2 == 1'b0) && (cs_d1 == 1'b1);
+    assign cs_fall = (cs_d2 == 1'b1) && (cs_d1 == 1'b0);
 
     reg [1023:0] tx_shift;
     reg [1023:0] rx_shift;
