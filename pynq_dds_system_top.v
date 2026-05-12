@@ -116,6 +116,8 @@ module pynq_dds_system_top (
     reg [31:0] dds_flags      = 32'd1; // bit0=ready
 
     reg [31:0] last_cmd_seq     = 32'hFFFFFFFF;
+    reg [31:0] dds_fword        = 32'd172; // ~1Hz default
+    reg        dds_phase_reset  = 1'b0;
 
     // DDS command enum
     localparam [31:0] DDS_CMD_NOP          = 32'd0;
@@ -172,9 +174,12 @@ module pynq_dds_system_top (
             dds_cmd_accepted <= 1'b0;
             spi_frame_err  <= 1'b0;
             last_cmd_seq   <= 32'hFFFFFFFF;
+            dds_fword      <= 32'd172;
+            dds_phase_reset <= 1'b0;
         end else begin
             dds_cmd_accepted <= 1'b0;
             spi_frame_err <= 1'b0;
+            dds_phase_reset <= 1'b0;
 
             if (spi_done) begin
                 // Parse 0xD1 frame
@@ -205,6 +210,15 @@ module pynq_dds_system_top (
                     if (rx_cmd_seq != last_cmd_seq && rx_cmd != DDS_CMD_NOP) begin
                         last_cmd_seq <= rx_cmd_seq;
                         dds_cmd_accepted <= 1'b1;
+
+                        if (rx_cmd == DDS_CMD_SET_FREQ || rx_cmd == DDS_CMD_SET_SINGLE) begin
+                            // FWORD = freq_hz * 171.8 ~= freq_hz * 172.
+                            dds_fword <= rx_cmd_freq * 32'd172;
+                            dds_phase_reset <= 1'b1;
+                        end else if (rx_cmd == DDS_CMD_STOP) begin
+                            dds_fword <= 32'd0;
+                            dds_phase_reset <= 1'b1;
+                        end
                     end
                 end else begin
                     spi_frame_err <= 1'b1;
@@ -268,19 +282,6 @@ module pynq_dds_system_top (
     // For better accuracy: FWORD = freq_hz * 171 + (freq_hz * 20971) >> 15
     // But for Phase 1: FWORD = freq_hz * 172 (0.117% error)
     // ============================================================
-    reg [31:0] dds_fword = 32'd172; // ~1Hz default
-
-    always @(posedge clk_125m) begin
-        if (por_rst) begin
-            dds_fword <= 32'd172;
-        end else if (dds_cmd == DDS_CMD_SET_FREQ || dds_cmd == DDS_CMD_SET_SINGLE) begin
-            // FWORD = freq_hz * 171.8 ≈ freq_hz * 172
-            dds_fword <= dds_cmd_freq * 32'd172;
-        end else if (dds_cmd == DDS_CMD_STOP) begin
-            // Output zero frequency (DC)
-            dds_fword <= 32'd0;
-        end
-    end
 
     // ============================================================
     // DDS Core + AD9767 interface (verified)
@@ -302,6 +303,8 @@ module pynq_dds_system_top (
         .wave_sel(3'b001),   // sine wave
         .t_group(1'b0),
         .fword(dds_fword),
+        .phase_offset(dds_cmd_phase),
+        .phase_reset(dds_phase_reset),
         .dac_code(dac_code)
     );
 

@@ -40,6 +40,14 @@ module pynq_dds_bridge_test_top #(
         end
     end
 
+    // Forward declarations for signals used by the LED block before the SPI
+    // parser block below.
+    wire spi_done;
+    wire adc_frame_valid;
+    wire [31:0] adc_seq;
+    reg [31:0] last_adc_seq = 32'd0;
+    reg print_start_msg = 1'b0;
+
     // ============================================================
     // Debug LEDs
     // ============================================================
@@ -141,7 +149,6 @@ module pynq_dds_bridge_test_top #(
     );
 
     wire [1023:0] spi_rx_frame;
-    wire spi_done;
     wire spi_active;
 
     spi_slave_128b u_spi_slave_128b (
@@ -157,8 +164,6 @@ module pynq_dds_bridge_test_top #(
         .active(spi_active)
     );
 
-    wire adc_frame_valid;
-    wire [31:0] adc_seq;
     wire [31:0] adc_text_len;
     wire [831:0] adc_text_bytes;
 
@@ -175,7 +180,6 @@ module pynq_dds_bridge_test_top #(
         .text_bytes(adc_text_bytes)
     );
 
-    reg [31:0] last_adc_seq = 32'd0;
     reg [831:0] print_text = 832'd0;
     reg [31:0] print_text_len = 32'd0;
     reg print_pending = 1'b0;
@@ -223,7 +227,6 @@ module pynq_dds_bridge_test_top #(
     reg print_active = 1'b1;
     reg [1:0] print_mode = PRINT_READY;
     reg [7:0] print_index = 8'd0;
-    reg print_start_msg = 1'b0;
 
     reg err_pending = 1'b0;
     reg [26:0] err_rate_cnt = 27'd0;
@@ -363,6 +366,9 @@ module pynq_dds_bridge_test_top #(
         .sample_tick(sample_tick),
         .wave_sel(3'b001),
         .t_group(1'b0),
+        .fword(32'd171799),
+        .phase_offset(32'd0),
+        .phase_reset(1'b0),
         .dac_code(dac_code)
     );
 

@@ -22,6 +22,8 @@ module dds_core #(
     input  wire [2:0]  wave_sel,
     input  wire        t_group,          // 0=low-8, 1=high-6
     input  wire [31:0] fword,
+    input  wire [31:0] phase_offset,
+    input  wire        phase_reset,
     output reg  [13:0] dac_code
 );
 
@@ -69,6 +71,8 @@ module dds_core #(
     always @(posedge clk) begin
         if (rst)
             fre_acc <= 32'd0;
+        else if (phase_reset)
+            fre_acc <= phase_offset;
         else if (dds_en && sample_tick)
             fre_acc <= fre_acc + active_fword;
     end
